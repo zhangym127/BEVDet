@@ -6,7 +6,7 @@ from mmcv.runner import BaseModule
 from torch import nn as nn
 
 from ..builder import BACKBONES
-
+from torch.utils.checkpoint import checkpoint
 
 @BACKBONES.register_module()
 class SECOND(BaseModule):
@@ -28,6 +28,7 @@ class SECOND(BaseModule):
                  layer_strides=[2, 2, 2],
                  norm_cfg=dict(type='BN', eps=1e-3, momentum=0.01),
                  conv_cfg=dict(type='Conv2d', bias=False),
+                 with_cp=False,
                  init_cfg=None,
                  pretrained=None):
         super(SECOND, self).__init__(init_cfg=init_cfg)
@@ -74,6 +75,7 @@ class SECOND(BaseModule):
             self.init_cfg = dict(type='Pretrained', checkpoint=pretrained)
         else:
             self.init_cfg = dict(type='Kaiming', layer='Conv2d')
+        self.with_cp = with_cp
 
     def forward(self, x):
         """Forward function.
@@ -86,6 +88,9 @@ class SECOND(BaseModule):
         """
         outs = []
         for i in range(len(self.blocks)):
-            x = self.blocks[i](x)
+            if self.with_cp:
+                x =checkpoint(self.blocks[i], x)
+            else:
+                x = self.blocks[i](x)
             outs.append(x)
         return tuple(outs)

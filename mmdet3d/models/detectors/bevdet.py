@@ -7,6 +7,7 @@ from mmdet3d.ops.bev_pool_v2.bev_pool import TRTBEVPoolv2
 from mmdet.models import DETECTORS
 from .. import builder
 from .centerpoint import CenterPoint
+from mmdet3d.models.utils.grid_mask import GridMask
 from mmdet.models.backbones.resnet import ResNet
 
 
@@ -23,18 +24,28 @@ class BEVDet(CenterPoint):
         img_bev_encoder_neck (dict): Configuration dict of the BEV encoder neck.
     """
 
-    def __init__(self, img_view_transformer, img_bev_encoder_backbone,
-                 img_bev_encoder_neck, **kwargs):
+    def __init__(self,
+                 img_view_transformer,
+                 img_bev_encoder_backbone=None,
+                 img_bev_encoder_neck=None,
+                 use_grid_mask=False,
+                 **kwargs):
         super(BEVDet, self).__init__(**kwargs)
+        self.grid_mask = None if not use_grid_mask else \
+            GridMask(True, True, rotate=1, offset=False, ratio=0.5, mode=1,
+                     prob=0.7)
         self.img_view_transformer = builder.build_neck(img_view_transformer)
-        self.img_bev_encoder_backbone = \
-            builder.build_backbone(img_bev_encoder_backbone)
-        self.img_bev_encoder_neck = builder.build_neck(img_bev_encoder_neck)
+        if img_bev_encoder_neck and img_bev_encoder_backbone:
+            self.img_bev_encoder_backbone = \
+                builder.build_backbone(img_bev_encoder_backbone)
+            self.img_bev_encoder_neck = builder.build_neck(img_bev_encoder_neck)
 
     def image_encoder(self, img, stereo=False):
         imgs = img
         B, N, C, imH, imW = imgs.shape
         imgs = imgs.view(B * N, C, imH, imW)
+        if self.grid_mask is not None:
+            imgs = self.grid_mask(imgs)
         x = self.img_backbone(imgs)
         stereo_feat = None
         if stereo:

@@ -211,6 +211,8 @@ def main():
     if not args.no_aavt:
         if '4D' in cfg.model.type:
             cfg.model.align_after_view_transfromation=True
+    if 'num_proposals_test' in cfg and cfg.model.type=='DAL':
+        cfg.model.pts_bbox_head.num_proposals=cfg.num_proposals_test
     cfg.model.train_cfg = None
     model = build_model(cfg.model, test_cfg=cfg.get('test_cfg'))
     fp16_cfg = cfg.get('fp16', None)

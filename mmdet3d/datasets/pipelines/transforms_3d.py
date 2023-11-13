@@ -4,6 +4,7 @@ import warnings
 
 import cv2
 import numpy as np
+from pyquaternion.quaternion import Quaternion
 from mmcv import is_tuple_of
 from mmcv.utils import build_from_cfg
 
@@ -493,7 +494,7 @@ class ObjectSample(object):
                 gt_labels_3d,
                 img=None,
                 ground_plane=ground_plane)
-
+        num_exist = gt_labels_3d.shape[0]
         if sampled_dict is not None:
             sampled_gt_bboxes_3d = sampled_dict['gt_bboxes_3d']
             sampled_points = sampled_dict['points']
@@ -516,7 +517,10 @@ class ObjectSample(object):
 
                 input_dict['gt_bboxes'] = gt_bboxes_2d
                 input_dict['img'] = sampled_dict['img']
-
+        gt_bboxes_ignore = np.ones_like(gt_labels_3d)
+        gt_bboxes_ignore[num_exist:] = 0
+        gt_bboxes_ignore = gt_bboxes_ignore.astype(np.bool)
+        input_dict['gt_bboxes_ignore'] = gt_bboxes_ignore
         input_dict['gt_bboxes_3d'] = gt_bboxes_3d
         input_dict['gt_labels_3d'] = gt_labels_3d.astype(np.int64)
         input_dict['points'] = points
@@ -917,6 +921,11 @@ class ObjectRangeFilter(object):
         gt_bboxes_3d = input_dict['gt_bboxes_3d']
         gt_labels_3d = input_dict['gt_labels_3d']
         mask = gt_bboxes_3d.in_range_bev(bev_range)
+
+        if 'gt_bboxes_ignore' in input_dict:
+            gt_bboxes_ignore = input_dict['gt_bboxes_ignore']
+            gt_bboxes_ignore = gt_bboxes_ignore[mask.numpy().astype(np.bool)]
+            input_dict['gt_bboxes_ignore'] = gt_bboxes_ignore
         gt_bboxes_3d = gt_bboxes_3d[mask]
         # mask is a torch tensor but gt_labels_3d is still numpy array
         # using mask to index gt_labels_3d will cause bug when
@@ -1010,7 +1019,10 @@ class ObjectNameFilter(object):
                                   dtype=np.bool_)
         input_dict['gt_bboxes_3d'] = input_dict['gt_bboxes_3d'][gt_bboxes_mask]
         input_dict['gt_labels_3d'] = input_dict['gt_labels_3d'][gt_bboxes_mask]
-
+        if 'gt_bboxes_ignore' in input_dict:
+            gt_bboxes_ignore = input_dict['gt_bboxes_ignore']
+            gt_bboxes_ignore = gt_bboxes_ignore[gt_bboxes_mask]
+            input_dict['gt_bboxes_ignore'] = gt_bboxes_ignore
         return input_dict
 
     def __repr__(self):
@@ -1851,3 +1863,201 @@ class RandomShiftScale(object):
         repr_str += f'(shift_scale={self.shift_scale}, '
         repr_str += f'aug_prob={self.aug_prob}) '
         return repr_str
+
+
+@PIPELINES.register_module()
+class ToEgo(object):
+    def __init__(self, ego_cam='CAM_FRONT',):
+        self.ego_cam=ego_cam
+
+    def __call__(self, results):
+        lidar2lidarego = np.eye(4, dtype=np.float32)
+        lidar2lidarego[:3, :3] = Quaternion(
+            results['curr']['lidar2ego_rotation']).rotation_matrix
+        lidar2lidarego[:3, 3] = results['curr']['lidar2ego_translation']
+
+        lidarego2global = np.eye(4, dtype=np.float32)
+        lidarego2global[:3, :3] = Quaternion(
+            results['curr']['ego2global_rotation']).rotation_matrix
+        lidarego2global[:3, 3] = results['curr']['ego2global_translation']
+
+        camego2global = np.eye(4, dtype=np.float32)
+        camego2global[:3, :3] = Quaternion(
+            results['curr']['cams'][self.ego_cam]
+            ['ego2global_rotation']).rotation_matrix
+        camego2global[:3, 3] = results['curr']['cams'][self.ego_cam][
+            'ego2global_translation']
+        lidar2camego = np.linalg.inv(camego2global) @ lidarego2global @ lidar2lidarego
+
+        points = results['points'].tensor.numpy()
+        points_ego = lidar2camego[:3,:3].reshape(1, 3, 3) @ \
+                     points[:, :3].reshape(-1, 3, 1) + \
+                     lidar2camego[:3, 3].reshape(1, 3, 1)
+        points[:, :3] = points_ego.squeeze(-1)
+        points = results['points'].new_point(points)
+        results['points'] = points
+        return results
+
+
+@PIPELINES.register_module()
+class VelocityAug(object):
+    def __init__(self, rate=0.5, rate_vy=0.2, rate_rotation=-1, speed_range=None, thred_vy_by_vx=1.0,
+                 ego_cam='CAM_FRONT'):
+        # must be identical to that in tools/create_data_bevdet.py
+        self.cls = ['car', 'truck', 'construction_vehicle',
+                    'bus', 'trailer', 'barrier',
+                    'motorcycle', 'bicycle',
+                    'pedestrian', 'traffic_cone']
+        self.speed_range = dict(
+            car=[-10, 30, 6],
+            truck=[-10, 30, 6],
+            construction_vehicle=[-10, 30, 3],
+            bus=[-10, 30, 3],
+            trailer=[-10, 30, 3],
+            barrier=[-5, 5, 3],
+            motorcycle=[-2, 25, 3],
+            bicycle=[-2, 15, 2],
+            pedestrian=[-1, 10, 2]
+        ) if speed_range is None else speed_range
+        self.rate = rate
+        self.thred_vy_by_vx=thred_vy_by_vx
+        self.rate_vy = rate_vy
+        self.rate_rotation = rate_rotation
+        self.ego_cam = ego_cam
+
+    def interpolating(self, vx, vy, delta_t, box, rot):
+        delta_t_max = np.max(delta_t)
+        if vy ==0 or vx == 0:
+            delta_x = delta_t*vx
+            delta_y = np.zeros_like(delta_x)
+            rotation_interpolated = np.zeros_like(delta_x)
+        else:
+            theta = np.arctan2(abs(vy), abs(vx))
+            rotation = 2 * theta
+            radius = 0.5 * delta_t_max * np.sqrt(vx ** 2 + vy ** 2) / np.sin(theta)
+            rotation_interpolated = delta_t / delta_t_max * rotation
+            delta_y = radius - radius * np.cos(rotation_interpolated)
+            delta_x = radius * np.sin(rotation_interpolated)
+            if vy<0:
+                delta_y = - delta_y
+            if vx<0:
+                delta_x = - delta_x
+            if np.logical_xor(vx>0, vy>0):
+                rotation_interpolated = -rotation_interpolated
+        aug = np.zeros((delta_t.shape[0],3,3), dtype=np.float32)
+        aug[:, 2, 2] = 1.
+        sin = np.sin(-rotation_interpolated)
+        cos = np.cos(-rotation_interpolated)
+        aug[:,:2,:2] = np.stack([cos,sin,-sin,cos], axis=-1).reshape(delta_t.shape[0], 2, 2)
+        aug[:,:2, 2] = np.stack([delta_x, delta_y], axis=-1)
+
+        corner2center = np.eye(3)
+        corner2center[0, 2] = -0.5 * box[3]
+
+        instance2ego = np.eye(3)
+        yaw = -box[6]
+        s = np.sin(yaw)
+        c = np.cos(yaw)
+        instance2ego[:2,:2] = np.stack([c,s,-s,c]).reshape(2,2)
+        instance2ego[:2,2] = box[:2]
+        corner2ego = instance2ego @ corner2center
+        corner2ego = corner2ego[None, ...]
+        if not rot == 0:
+            t_rot = np.eye(3)
+            s_rot = np.sin(-rot)
+            c_rot = np.cos(-rot)
+            t_rot[:2,:2] = np.stack([c_rot, s_rot, -s_rot, c_rot]).reshape(2,2)
+
+            instance2ego_ = np.eye(3)
+            yaw_ = -box[6] - rot
+            s_ = np.sin(yaw_)
+            c_ = np.cos(yaw_)
+            instance2ego_[:2, :2] = np.stack([c_, s_, -s_, c_]).reshape(2, 2)
+            instance2ego_[:2, 2] = box[:2]
+            corner2ego_ = instance2ego_ @ corner2center
+            corner2ego_ = corner2ego_[None, ...]
+            t_rot = instance2ego @ t_rot @ np.linalg.inv(instance2ego)
+            aug = corner2ego_ @ aug @ np.linalg.inv(corner2ego_) @ t_rot[None, ...]
+        else:
+            aug = corner2ego @ aug @ np.linalg.inv(corner2ego)
+        return aug
+
+    def __call__(self, results):
+        gt_boxes = results['gt_bboxes_3d'].tensor.numpy().copy()
+        gt_velocity = gt_boxes[:,7:]
+        gt_velocity_norm = np.sum(np.square(gt_velocity), axis=1)
+        points = results['points'].tensor.numpy().copy()
+        point_indices = box_np_ops.points_in_rbbox(points, gt_boxes)
+
+        for bid in range(gt_boxes.shape[0]):
+            cls = self.cls[results['gt_labels_3d'][bid]]
+            points_all = points[point_indices[:, bid]]
+            delta_t = np.unique(points_all[:,4])
+            aug_rate_cls = self.rate if isinstance(self.rate, float) else self.rate[cls]
+            if points_all.shape[0]==0 or \
+                    delta_t.shape[0]<3 or \
+                    gt_velocity_norm[bid]>0.01 or \
+                    cls not in self.speed_range or \
+                    np.random.rand() > aug_rate_cls:
+                continue
+
+            # sampling speed vx,vy in instance coordinate
+            vx = np.random.rand() * (self.speed_range[cls][1] -
+                                     self.speed_range[cls][0]) + \
+                 self.speed_range[cls][0]
+            if np.random.rand() < self.rate_vy:
+                max_vy = min(self.speed_range[cls][2]*2, abs(vx) * self.thred_vy_by_vx)
+                vy = (np.random.rand()-0.5) * max_vy
+            else:
+                vy = 0.0
+            vx = -vx
+
+            # if points_all.shape[0] == 0 or cls not in self.speed_range or gt_velocity_norm[bid]>0.01 or delta_t.shape[0]<3:
+            #     continue
+            # vx = 10
+            # vy = -2.
+
+            rot = 0.0
+            if np.random.rand() < self.rate_rotation:
+                rot = (np.random.rand()-0.5) * 1.57
+
+            aug = self.interpolating(vx, vy, delta_t, gt_boxes[bid], rot)
+
+            # update rotation
+            gt_boxes[bid, 6] += rot
+
+            # update velocity
+            delta_t_max = np.max(delta_t)
+            delta_t_max_index = np.argmax(delta_t)
+            center = gt_boxes[bid:bid+1, :2]
+            center_aug = center @ aug[delta_t_max_index, :2, :2].T + aug[delta_t_max_index, :2, 2]
+            vel = (center - center_aug) / delta_t_max
+            gt_boxes[bid, 7:] = vel
+
+            # update points
+            for fid in range(delta_t.shape[0]):
+                points_curr_frame_idxes = points_all[:,4] == delta_t[fid]
+
+                points_all[points_curr_frame_idxes, :2] = \
+                    points_all[points_curr_frame_idxes, :2]  @ aug[fid,:2,:2].T + aug[fid,:2, 2:3].T
+            points[point_indices[:, bid]] = points_all
+
+
+        results['points'] = results['points'].new_point(points)
+        results['gt_bboxes_3d'] = results['gt_bboxes_3d'].new_box(gt_boxes)
+        return results
+
+    def adjust_adj_points(self, adj_points, point_indices_adj, bid, vx, vy, rot, gt_boxes_adj, info_adj, info):
+        ts_diff = info['timestamp'] / 1e6 - info_adj['timestamp'] / 1e6
+        points = adj_points.tensor.numpy().copy()
+        points_all_adj = points[point_indices_adj[:, bid]]
+        if points_all_adj.size>0:
+            delta_t_adj = np.unique(points_all_adj[:, 4]) + ts_diff
+            aug = self.interpolating(vx, vy, delta_t_adj, gt_boxes_adj[bid], rot)
+            for fid in range(delta_t_adj.shape[0]):
+                points_curr_frame_idxes = points_all_adj[:, 4] == delta_t_adj[fid]- ts_diff
+                points_all_adj[points_curr_frame_idxes, :2] = \
+                    points_all_adj[points_curr_frame_idxes, :2] @ aug[fid, :2, :2].T + aug[fid, :2, 2:3].T
+            points[point_indices_adj[:, bid]] = points_all_adj
+        adj_points = adj_points.new_point(points)
+        return adj_points

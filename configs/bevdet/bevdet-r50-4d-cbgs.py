@@ -213,8 +213,9 @@ train_pipeline = [
         is_train=True,
         data_config=data_config,
         sequential=True),
+    dict(type='LoadAnnotations'),
     dict(
-        type='LoadAnnotationsBEVDepth',
+        type='BEVAug',
         bda_aug_conf=bda_aug_conf,
         classes=class_names),
     dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
@@ -226,11 +227,11 @@ train_pipeline = [
 
 test_pipeline = [
     dict(type='PrepareImageInputs', data_config=data_config, sequential=True),
-    dict(
-        type='LoadAnnotationsBEVDepth',
-        bda_aug_conf=bda_aug_conf,
-        classes=class_names,
-        is_train=False),
+    dict(type='LoadAnnotations'),
+    dict(type='BEVAug',
+         bda_aug_conf=bda_aug_conf,
+         classes=class_names,
+         is_train=False),
     dict(
         type='LoadPointsFromFile',
         coord_type='LIDAR',
@@ -268,7 +269,7 @@ share_data_config = dict(
 
 test_data_config = dict(
     pipeline=test_pipeline,
-    ann_file=data_root + 'bevdetv2-nuscenes_infos_val.pkl')
+    ann_file=data_root + 'bevdetv3-nuscenes_infos_val.pkl')
 
 data = dict(
     samples_per_gpu=8,
@@ -277,7 +278,7 @@ data = dict(
         type='CBGSDataset',
         dataset=dict(
         data_root=data_root,
-        ann_file=data_root + 'bevdetv2-nuscenes_infos_train.pkl',
+        ann_file=data_root + 'bevdetv3-nuscenes_infos_train.pkl',
         pipeline=train_pipeline,
         classes=class_names,
         test_mode=False,

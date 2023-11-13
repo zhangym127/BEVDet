@@ -132,7 +132,7 @@ def main():
     res = json.load(open(args.res, 'r'))
     # load dataset information
     info_path = \
-        args.root_path + '/bevdetv2-nuscenes_infos_%s.pkl' % args.version
+        args.root_path + '/bevdetv3-nuscenes_infos_%s.pkl' % args.version
     dataset = pickle.load(open(info_path, 'rb'))
     # prepare save path and medium
     vis_dir = args.save_path

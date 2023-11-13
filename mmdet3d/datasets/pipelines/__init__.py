@@ -2,7 +2,7 @@
 from .compose import Compose
 from .dbsampler import DataBaseSampler
 from .formating import Collect3D, DefaultFormatBundle, DefaultFormatBundle3D
-from .loading import (LoadAnnotations3D, LoadAnnotationsBEVDepth,
+from .loading import (LoadAnnotations3D, LoadAnnotations, BEVAug,
                       LoadImageFromFileMono3D, LoadMultiViewImageFromFiles,
                       LoadPointsFromDict, LoadPointsFromFile,
                       LoadPointsFromMultiSweeps, NormalizePointsColor,
@@ -18,7 +18,8 @@ from .transforms_3d import (AffineResize, BackgroundPointsFilter,
                             PointShuffle, PointsRangeFilter,
                             RandomDropPointsColor, RandomFlip3D,
                             RandomJitterPoints, RandomRotate, RandomShiftScale,
-                            RangeLimitedRandomCrop, VoxelBasedPointSampler)
+                            RangeLimitedRandomCrop, ToEgo, VelocityAug,
+                            VoxelBasedPointSampler)
 
 __all__ = [
     'ObjectSample', 'RandomFlip3D', 'ObjectNoise', 'GlobalRotScaleTrans',
@@ -32,7 +33,6 @@ __all__ = [
     'LoadImageFromFileMono3D', 'ObjectNameFilter', 'RandomDropPointsColor',
     'RandomJitterPoints', 'AffineResize', 'RandomShiftScale',
     'LoadPointsFromDict', 'MultiViewWrapper', 'RandomRotate',
-    'RangeLimitedRandomCrop', 'PrepareImageInputs',
-    'LoadAnnotationsBEVDepth', 'PointToMultiViewDepth',
-    'LoadOccGTFromFile'
+    'RangeLimitedRandomCrop', 'PrepareImageInputs', 'PointToMultiViewDepth',
+    'LoadOccGTFromFile', 'ToEgo', 'VelocityAug', 'LoadAnnotations', 'BEVAug',
 ]

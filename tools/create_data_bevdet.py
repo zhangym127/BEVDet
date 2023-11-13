@@ -7,6 +7,8 @@ from nuscenes.utils.data_classes import Box
 from pyquaternion import Quaternion
 
 from tools.data_converter import nuscenes_converter as nuscenes_converter
+from tools.data_converter.create_gt_database import create_groundtruth_database
+
 
 map_name_from_general_to_detection = {
     'human.pedestrian.adult': 'pedestrian',
@@ -134,15 +136,20 @@ def add_ann_adj_info(extra_tag):
 
 if __name__ == '__main__':
     dataset = 'nuscenes'
-    version = 'v1.0'
-    train_version = f'{version}-trainval'
+    version = 'v1.0-trainval'
+    # version = 'v1.0-test'
     root_path = './data/nuscenes'
-    extra_tag = 'bevdetv2-nuscenes'
+    extra_tag = 'bevdetv3-nuscenes'
     nuscenes_data_prep(
         root_path=root_path,
         info_prefix=extra_tag,
-        version=train_version,
-        max_sweeps=0)
+        version=version,
+        max_sweeps=10)
 
-    print('add_ann_infos')
+    # print('add_ann_infos')
     add_ann_adj_info(extra_tag)
+
+    create_groundtruth_database('NuScenesDataset',
+                                root_path,
+                                extra_tag,
+                                f'{root_path}/{extra_tag}_infos_train.pkl')

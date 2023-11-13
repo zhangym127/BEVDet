@@ -11,6 +11,8 @@ from mmdet3d.ops.bev_pool_v2.bev_pool import bev_pool_v2
 from mmdet.models.backbones.resnet import BasicBlock
 from ..builder import NECKS
 
+from torch.utils.checkpoint import checkpoint
+
 
 @NECKS.register_module()
 class LSSViewTransformer(BaseModule):
@@ -47,8 +49,11 @@ class LSSViewTransformer(BaseModule):
         accelerate=False,
         sid=False,
         collapse_z=True,
+        with_cp=False,
+        with_depth_from_lidar=False,
     ):
         super(LSSViewTransformer, self).__init__()
+        self.with_cp = with_cp
         self.grid_config = grid_config
         self.downsample = downsample
         self.create_grid_infos(**grid_config)
@@ -62,6 +67,28 @@ class LSSViewTransformer(BaseModule):
         self.accelerate = accelerate
         self.initial_flag = True
         self.collapse_z = collapse_z
+        self.with_depth_from_lidar = with_depth_from_lidar
+        if self.with_depth_from_lidar:
+            self.lidar_input_net = nn.Sequential(
+                nn.Conv2d(1, 8, 1),
+                nn.BatchNorm2d(8),
+                nn.ReLU(True),
+                nn.Conv2d(8, 32, 5, stride=4, padding=2),
+                nn.BatchNorm2d(32),
+                nn.ReLU(True),
+                nn.Conv2d(32, 64, 5, stride=int(2 * self.downsample / 8),
+                          padding=2),
+                nn.BatchNorm2d(64),
+                nn.ReLU(True))
+            out_channels = self.D + self.out_channels
+            self.depth_net = nn.Sequential(
+                nn.Conv2d(in_channels + 64, in_channels, 3, padding=1),
+                nn.BatchNorm2d(in_channels),
+                nn.ReLU(True),
+                nn.Conv2d(in_channels, in_channels, 3, padding=1),
+                nn.BatchNorm2d(in_channels),
+                nn.ReLU(True),
+                nn.Conv2d(in_channels, out_channels, 1))
 
     def create_grid_infos(self, x, y, z, **kwargs):
         """Generate the grid information including the lower bound, interval,
@@ -147,8 +174,9 @@ class LSSViewTransformer(BaseModule):
         combine = sensor2ego[:,:,:3,:3].matmul(torch.inverse(cam2imgs))
         points = combine.view(B, N, 1, 1, 1, 3, 3).matmul(points).squeeze(-1)
         points += sensor2ego[:,:,:3, 3].view(B, N, 1, 1, 1, 3)
-        points = bda.view(B, 1, 1, 1, 1, 3,
-                          3).matmul(points.unsqueeze(-1)).squeeze(-1)
+        points = bda[:, :3, :3].view(B, 1, 1, 1, 1, 3, 3).matmul(
+            points.unsqueeze(-1)).squeeze(-1)
+        points += bda[:, :3, 3].view(B, 1, 1, 1, 1, 3)
         return points
 
     def init_acceleration_v2(self, coor):
@@ -290,11 +318,13 @@ class LSSViewTransformer(BaseModule):
         return bev_feat, depth
 
     def view_transform(self, input, depth, tran_feat):
+        for shape_id in range(3):
+            assert depth.shape[shape_id+1] == self.frustum.shape[shape_id]
         if self.accelerate:
             self.pre_compute(input)
         return self.view_transform_core(input, depth, tran_feat)
 
-    def forward(self, input):
+    def forward(self, input, depth_from_lidar=None):
         """Transform image-view feature into bird-eye-view feature.
 
         Args:
@@ -307,7 +337,19 @@ class LSSViewTransformer(BaseModule):
         x = input[0]
         B, N, C, H, W = x.shape
         x = x.view(B * N, C, H, W)
-        x = self.depth_net(x)
+        if self.with_depth_from_lidar:
+            assert depth_from_lidar is not None
+            if isinstance(depth_from_lidar, list):
+                assert len(depth_from_lidar) == 1
+                depth_from_lidar = depth_from_lidar[0]
+            h_img, w_img = depth_from_lidar.shape[2:]
+            depth_from_lidar = depth_from_lidar.view(B * N, 1, h_img, w_img)
+            depth_from_lidar = self.lidar_input_net(depth_from_lidar)
+            x = torch.cat([x, depth_from_lidar], dim=1)
+        if self.with_cp:
+            x =checkpoint(self.depth_net, x)
+        else:
+            x = self.depth_net(x)
 
         depth_digit = x[:, :self.D, ...]
         tran_feat = x[:, self.D:self.D + self.out_channels, ...]

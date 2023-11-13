@@ -1,24 +1,12 @@
 # BEVDet
 
-![Illustrating the performance of the proposed BEVDet on the nuScenes val set](./resources/nds-fps.png)
+
+![](./resources/nds-fps-dal.png)
+
 
 ## News
-- **2023.05.07** Improve the occpancy baseline by enlarging the input size and using long-term temporal fusion.
-- **2023.04.28** Support task of [occupancy prediction](https://github.com/CVPR2023-3D-Occupancy-Prediction/CVPR2023-3D-Occupancy-Prediction) .
-- **2023.04.27** Equip BEVDet with stereo depth estimation.
-- **2023.04.10** Use single head for multi-class prediction.
-- **2023.01.12** Support TensorRT-INT8.
-- **2022.11.24** A new branch of bevdet codebase, dubbed dev2.0, is released. dev2.0 includes the following features:
+- **2023.11.08** Support DAL for 3D object detection with LiDAR-camera fusion.
 
-1. support **BEVPoolv2**, whose inference speed is up to **15.1 times** the previous fastest implementation of Lift-Splat-Shoot view transformer. It is also far less memory consumption.
-   ![bevpoolv2](./resources/bevpoolv2.png)
-   ![bevpoolv2](./resources/bevpoolv2_performance.png)
-2. use the origin of ego coordinate system as the center of the receptive field instead of the Lidar's.
-3. **support conversion of BEVDet from pytorch to TensorRT.**
-4. use the long term temporal fusion as SOLOFusion.
-5. train models without CBGS by default.
-6. use key frame for temporal fusion.
-7. Technique Report [BEVPoolv2](https://arxiv.org/abs/2211.17111) in English and [Blog](https://zhuanlan.zhihu.com/p/586637783) in Chinese.
 
 - [History](./docs/en/news.md)
 
@@ -35,7 +23,9 @@
 | [**BEVDet-R50-4DLongterm-Depth-CBGS**](configs/bevdet/bevdet-r50-4d-depth-cbgs.py) | 39.4/39.9# | 51.5/51.9# |38.4/4.0/42.4 |23.6 | [baidu](https://pan.baidu.com/s/1237QyV18zvRJ1pU3YzRItw?pwd=npe1) | [baidu](https://pan.baidu.com/s/1237QyV18zvRJ1pU3YzRItw?pwd=npe1) |
 | [**BEVDet-R50-4DLongterm-Stereo-CBGS**](configs/bevdet/bevdet-r50-4dlongterm-stereo-cbgs.py) | 41.1/41.5# | 52.3/52.7# |- |- | [baidu](https://pan.baidu.com/s/1237QyV18zvRJ1pU3YzRItw?pwd=npe1) | [baidu](https://pan.baidu.com/s/1237QyV18zvRJ1pU3YzRItw?pwd=npe1) |
 | [**BEVDet-STBase-4D-Stereo-512x1408-CBGS**](configs/bevdet/bevdet-stbase-4d-stereo-512x1408-cbgs.py) | 47.2# | 57.6# |-  |-  | [baidu](https://pan.baidu.com/s/1237QyV18zvRJ1pU3YzRItw?pwd=npe1) | [baidu](https://pan.baidu.com/s/1237QyV18zvRJ1pU3YzRItw?pwd=npe1) |
-
+| [**DAL-Tiny**](configs/dal/dal-tiny.py) | 67.4# | 71.3# |-  |16.6 | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) |
+| [**DAL-Base**](configs/dal/dal-base.py) | 70.0# | 73.4# |-  |10.7 | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) |
+| [**DAL-Large**](configs/dal/dal-large.py) | 71.5# | 74.0# |-  |6.1 | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) |
 \# align previous frame bev feature during the view transformation.
 
 Depth: Depth supervised from Lidar as BEVDepth.

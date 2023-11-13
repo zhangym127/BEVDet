@@ -247,6 +247,20 @@ def main():
             CLASSES=datasets[0].CLASSES,
             PALETTE=datasets[0].PALETTE  # for segmentors
             if hasattr(datasets[0], 'PALETTE') else None)
+
+    # remove objectsample augmentation in the 2nd stage
+    if cfg.get('two_stage', False):
+        assert len(cfg.workflow) == 1
+        assert cfg.data.train.dataset.pipeline[5].type =='ObjectSample'
+        assert len(cfg.data.train.dataset.pipeline)==15
+        cfg.data.train.dataset.pipeline = \
+            [cfg.data.train.dataset.pipeline[kid] for kid in
+             [0, 1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13]]
+        cfg.data.train.dataset.pipeline.append(
+            dict(type='Collect3D',
+                 keys=['points', 'gt_bboxes_3d', 'gt_depth',
+                'gt_labels_3d', 'img_inputs']))
+        datasets.append(build_dataset(cfg.data.train))
     # add an attribute for visualization convenience
     model.CLASSES = datasets[0].CLASSES
     train_model(
