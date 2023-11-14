@@ -137,7 +137,7 @@ model = dict(
         instance_attn=False,
 
         # Transfusion
-        num_proposals=300,
+        num_proposals=200,
         in_channels=512,
         hidden_channel=128,
         num_classes=10,
@@ -267,7 +267,7 @@ train_pipeline = [
         file_client_args=file_client_args),
     dict(
         type='LoadPointsFromMultiSweeps',
-        sweeps_num=9,
+        sweeps_num=10,
         use_dim=[0, 1, 2, 3, 4],
         file_client_args=file_client_args,
         pad_empty_sweeps=True,
@@ -306,7 +306,7 @@ test_pipeline = [
         file_client_args=file_client_args),
     dict(
         type='LoadPointsFromMultiSweeps',
-        sweeps_num=9,
+        sweeps_num=10,
         use_dim=[0, 1, 2, 3, 4],
         file_client_args=file_client_args,
         pad_empty_sweeps=True,
@@ -379,3 +379,4 @@ evaluation = dict(interval=20, pipeline=test_pipeline)
 optimizer = dict(type='AdamW', lr=2e-4, weight_decay=0.01)  # for 64 total batch size
 two_stage = True
 runner = dict(type='TwoStageRunner', max_epochs=20)
+num_proposals_test = 300
