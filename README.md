@@ -5,8 +5,7 @@
 
 
 ## News
-- **2023.11.08** Support DAL for 3D object detection with LiDAR-camera fusion.
-
+- **2023.11.08** Support DAL for 3D object detection with LiDAR-camera fusion. [[Arxiv](https://arxiv.org/abs/2311.07152)]
 
 - [History](./docs/en/news.md)
 
@@ -23,9 +22,11 @@
 | [**BEVDet-R50-4DLongterm-Depth-CBGS**](configs/bevdet/bevdet-r50-4d-depth-cbgs.py) | 39.4/39.9# | 51.5/51.9# |38.4/4.0/42.4 |23.6 | [baidu](https://pan.baidu.com/s/1237QyV18zvRJ1pU3YzRItw?pwd=npe1) | [baidu](https://pan.baidu.com/s/1237QyV18zvRJ1pU3YzRItw?pwd=npe1) |
 | [**BEVDet-R50-4DLongterm-Stereo-CBGS**](configs/bevdet/bevdet-r50-4dlongterm-stereo-cbgs.py) | 41.1/41.5# | 52.3/52.7# |- |- | [baidu](https://pan.baidu.com/s/1237QyV18zvRJ1pU3YzRItw?pwd=npe1) | [baidu](https://pan.baidu.com/s/1237QyV18zvRJ1pU3YzRItw?pwd=npe1) |
 | [**BEVDet-STBase-4D-Stereo-512x1408-CBGS**](configs/bevdet/bevdet-stbase-4d-stereo-512x1408-cbgs.py) | 47.2# | 57.6# |-  |-  | [baidu](https://pan.baidu.com/s/1237QyV18zvRJ1pU3YzRItw?pwd=npe1) | [baidu](https://pan.baidu.com/s/1237QyV18zvRJ1pU3YzRItw?pwd=npe1) |
-| [**DAL-Tiny**](configs/dal/dal-tiny.py) | 67.4# | 71.3# |-  |16.6 | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) |
-| [**DAL-Base**](configs/dal/dal-base.py) | 70.0# | 73.4# |-  |10.7 | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) |
-| [**DAL-Large**](configs/dal/dal-large.py) | 71.5# | 74.0# |-  |6.1 | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) |
+||
+| [**DAL-Tiny**](configs/dal/dal-tiny.py) | 67.4 | 71.3 |-  |16.6 | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) |
+| [**DAL-Base**](configs/dal/dal-base.py) | 70.0 | 73.4 |-  |10.7 | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) |
+| [**DAL-Large**](configs/dal/dal-large.py) | 71.5 | 74.0 |-  |6.10 | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) | [baidu](https://pan.baidu.com/s/15rmJL_SWUeQEXG9dYYl8gA?pwd=36g5) |
+
 \# align previous frame bev feature during the view transformation.
 
 Depth: Depth supervised from Lidar as BEVDepth.
@@ -152,9 +153,16 @@ Beside, there are some other attractive works extend the boundary of BEVDet.
 
 ## Bibtex
 
-If this work is helpful for your research, please consider citing the following BibTeX entry.
+If this work is helpful for your research, please consider citing the following BibTeX entries.
 
 ```
+@article{huang2023dal,
+  title={Detecting As Labeling: Rethinking LiDAR-camera Fusion in 3D Object Detection},
+  author={Huang, Junjie and Ye, Yun and Liang, Zhujin and Shan, Yi and Huang, Guan},
+  journal={arXiv preprint arXiv:2311.07152},
+  year={2023}
+}
+
 @article{huang2022bevpoolv2,
   title={BEVPoolv2: A Cutting-edge Implementation of BEVDet Toward Deployment},
   author={Huang, Junjie and Huang, Guan},
