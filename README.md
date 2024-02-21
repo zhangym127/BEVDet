@@ -158,7 +158,7 @@ If this work is helpful for your research, please consider citing the following 
 ```
 @article{huang2023dal,
   title={Detecting As Labeling: Rethinking LiDAR-camera Fusion in 3D Object Detection},
-  author={Huang, Junjie and Ye, Yun and Liang, Zhujin and Shan, Yi and Huang, Guan},
+  author={Huang, Junjie and Ye, Yun and Liang, Zhujin and Shan, Yi and Du, Dalong},
   journal={arXiv preprint arXiv:2311.07152},
   year={2023}
 }
