@@ -744,7 +744,7 @@ class LSSViewTransformerBEVDepth(LSSViewTransformer):
 
     def get_mlp_input(self, sensor2ego, ego2global, intrin, post_rot, post_tran, bda):
         B, N, _, _ = sensor2ego.shape
-        bda = bda.view(B, 1, 3, 3).repeat(1, N, 1, 1)
+        bda = bda.view(B, 1, 4, 4).repeat(1, N, 1, 1)
         mlp_input = torch.stack([
             intrin[:, :, 0, 0],
             intrin[:, :, 1, 1],
