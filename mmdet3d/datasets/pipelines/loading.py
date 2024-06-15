@@ -716,7 +716,7 @@ class LoadAnnotations3D(LoadAnnotations):
         repr_str += f'{indent_str}poly2mask={self.poly2mask})'
         return repr_str
 
-
+# 从点云中获得深度真值，用于深度估计网络的训练
 @PIPELINES.register_module()
 class PointToMultiViewDepth(object):
 
