@@ -716,7 +716,7 @@ class LoadAnnotations3D(LoadAnnotations):
         repr_str += f'{indent_str}poly2mask={self.poly2mask})'
         return repr_str
 
-# ´ÓµãÔÆÖĞ»ñµÃÉî¶ÈÕæÖµ£¬ÓÃÓÚÉî¶È¹À¼ÆÍøÂçµÄÑµÁ·
+# ä»ç‚¹äº‘ä¸­è·å¾—æ·±åº¦çœŸå€¼ï¼Œç”¨äºæ·±åº¦ä¼°è®¡ç½‘ç»œçš„è®­ç»ƒ
 @PIPELINES.register_module()
 class PointToMultiViewDepth(object):
 
