@@ -87,6 +87,8 @@ class BEVDet(CenterPoint):
         return [imgs, sensor2keyegos, ego2globals, intrins,
                 post_rots, post_trans, bda]
 
+    # @info 通过“编码器-视角转换器-编码器”的组合提取特征
+    #       这是BEVDet的基类版本，BEVDet4D和BEVDepth4D都继承了它
     def extract_img_feat(self, img, img_metas, **kwargs):
         """Extract features of images."""
         img = self.prepare_inputs(img)
@@ -298,9 +300,14 @@ class BEVDet4D(BEVDet):
         self.with_prev = with_prev
         self.grid = None
 
+    # @info 生成网格，并根据给定的位姿变换到相邻帧BEV坐标系下，用于将前一帧的BEV特征与当前帧的BEV特征对齐。
     def gen_grid(self, input, sensor2keyegos, bda, bda_adj=None):
+
+        # 取得输入BEV特征的形状，n是批次大小，c是通道数，h是高度，w是宽度
         n, c, h, w = input.shape
         _, v, _, _ = sensor2keyegos[0].shape
+
+        # 生成和输入BEV特征相同形状的网格，形状是(h, w, 3)，3是采样点的坐标，其中x和y是网格的坐标，z是全1
         if self.grid is None:
             # generate grid
             xs = torch.linspace(
@@ -310,18 +317,25 @@ class BEVDet4D(BEVDet):
                 0, h - 1, h, dtype=input.dtype,
                 device=input.device).view(h, 1).expand(h, w)
             grid = torch.stack((xs, ys, torch.ones_like(xs)), -1)
-            self.grid = grid
+            self.grid = grid #保存网格，避免重复生成
         else:
             grid = self.grid
+        # 将网格扩展为批次大小，形状是(n, h, w, 3, 1)
         grid = grid.view(1, h, w, 3).expand(n, h, w, 3).view(n, h, w, 3, 1)
 
+
+        # 获取当前帧自车坐标系到相邻帧自车坐标系的变换矩阵
         # get transformation from current ego frame to adjacent ego frame
+
+        # 当前帧相机坐标系到当前自车坐标系的变换矩阵，c0是当前帧图像，l0是当前帧自车坐标系
         # transformation from current camera frame to current ego frame
         c02l0 = sensor2keyegos[0][:, 0:1, :, :]
 
+        # 相邻帧相机坐标系到当前自车坐标系的变换矩阵，c1是相邻帧图像，l0是当前帧自车坐标系
         # transformation from adjacent camera frame to current ego frame
         c12l0 = sensor2keyegos[1][:, 0:1, :, :]
 
+        # 对两个变换关系进行BEV数据增强，本质上是添加可学习的参数到变换矩阵中
         # add bev data augmentation
         bda_ = torch.zeros((n, 1, 4, 4), dtype=grid.dtype).to(grid)
         bda_[:, :, :3, :3] = bda.unsqueeze(1)
@@ -333,6 +347,8 @@ class BEVDet4D(BEVDet):
             bda_[:, :, 3, 3] = 1
         c12l0 = bda_.matmul(c12l0)
 
+        # 计算当前帧相机坐标系到相邻帧相机坐标系的变换矩阵，维度是(n, 1, 1, 4, 4)
+        # 也可以认为是当前帧自车坐标系到相邻帧自车坐标系的变换矩阵
         # transformation from current ego frame to adjacent ego frame
         l02l1 = c02l0.matmul(torch.inverse(c12l0))[:, 0, :, :].view(
             n, 1, 1, 4, 4)
@@ -343,10 +359,12 @@ class BEVDet4D(BEVDet):
         = l02l1 # c02l0==c12l1
         '''
 
+        # 从l02l1中选择部分维度，形状是(n, 1, 1, 3, 3)
         l02l1 = l02l1[:, :, :,
                       [True, True, False, True], :][:, :, :, :,
                                                     [True, True, False, True]]
 
+        # 将变换矩阵转换到BEV网格坐标系下，形状是(n, 1, 1, 3, 3)
         feat2bev = torch.zeros((3, 3), dtype=grid.dtype).to(grid)
         feat2bev[0, 0] = self.img_view_transformer.grid_interval[0]
         feat2bev[1, 1] = self.img_view_transformer.grid_interval[1]
@@ -356,21 +374,29 @@ class BEVDet4D(BEVDet):
         feat2bev = feat2bev.view(1, 3, 3)
         tf = torch.inverse(feat2bev).matmul(l02l1).matmul(feat2bev)
 
+        # 将网格变换到相邻帧BEV坐标系下，形状是(n, h, w, 3, 1)
         # transform and normalize
         grid = tf.matmul(grid)
         normalize_factor = torch.tensor([w - 1.0, h - 1.0],
                                         dtype=input.dtype,
                                         device=input.device)
+        
+        # 将网格坐标归一化到[-1, 1]，形状是(n, h, w, 2, 1)
         grid = grid[:, :, :, :2, 0] / normalize_factor.view(1, 1, 1,
                                                             2) * 2.0 - 1.0
         return grid
 
+    # @info 根据给定的位姿变换，对给定的BEV特征进行位姿转换，构造新的BEV特征。
+    #       用于将前一帧的BEV特征与当前帧的BEV特征对齐。
     @force_fp32()
     def shift_feature(self, input, sensor2keyegos, bda, bda_adj=None):
+        # 生成BEV特征采样网格，并根据给定的位姿变换到相邻帧BEV坐标系下
         grid = self.gen_grid(input, sensor2keyegos, bda, bda_adj=bda_adj)
+        # 用构造的网格从相邻帧BEV特征中采样，得到对齐的BEV特征
         output = F.grid_sample(input, grid.to(input.dtype), align_corners=True)
         return output
 
+    # @info 完成图像特征提取和视角转换，获得初级BEV特征
     def prepare_bev_feat(self, img, rot, tran, intrin, post_rot, post_tran,
                          bda, mlp_input):
         x, _ = self.image_encoder(img)
@@ -380,19 +406,30 @@ class BEVDet4D(BEVDet):
             bev_feat = self.pre_process_net(bev_feat)[0]
         return bev_feat, depth
 
+    # @info 连续的提取图像特征：在提取图像特征的同时，提取时序特征
+    #       时序特征提取的关键在于将前一帧的BEV特征与当前帧的BEV特征对齐，参与后续的BEV特征提取
     def extract_img_feat_sequential(self, inputs, feat_prev):
+
+        # 从输入中提取图像、传感器到关键帧的变换、关键帧到全局的变换、内参、后处理旋转、后处理平移、数据增强矩阵等
         imgs, sensor2keyegos_curr, ego2globals_curr, intrins = inputs[:4]
         sensor2keyegos_prev, _, post_rots, post_trans, bda = inputs[4:]
+
+        # 在get_mlp_input中，将内参、后处理旋转、后处理平移、数据增强矩阵等拼接在一起，构成mlp输入
         bev_feat_list = []
         mlp_input = self.img_view_transformer.get_mlp_input(
             sensor2keyegos_curr[0:1, ...], ego2globals_curr[0:1, ...],
             intrins, post_rots, post_trans, bda[0:1, ...])
+        
+        # 将图像、传感器到关键帧的变换、关键帧到全局的变换、内参、后处理旋转、后处理平移、数据增强矩阵、mlp输入拼接在一起
         inputs_curr = (imgs, sensor2keyegos_curr[0:1, ...],
                        ego2globals_curr[0:1, ...], intrins, post_rots,
                        post_trans, bda[0:1, ...], mlp_input)
+        
+        # 通过“图像编码器-视角转换器”的组合获得初级BEV特征
         bev_feat, depth = self.prepare_bev_feat(*inputs_curr)
         bev_feat_list.append(bev_feat)
 
+        # 将前一帧的BEV特征与当前帧的BEV特征对齐，拼接在一起
         # align the feat_prev
         _, C, H, W = feat_prev.shape
         feat_prev = \
@@ -401,6 +438,7 @@ class BEVDet4D(BEVDet):
                                bda)
         bev_feat_list.append(feat_prev.view(1, (self.num_frame - 1) * C, H, W))
 
+        # 对拼接后的BEV特征进行进一步的BEV特征提取
         bev_feat = torch.cat(bev_feat_list, dim=1)
         x = self.bev_encoder(bev_feat)
         return [x], depth
@@ -458,40 +496,62 @@ class BEVDet4D(BEVDet):
         return imgs, sensor2keyegos, ego2globals, intrins, post_rots, post_trans, \
                bda, curr2adjsensor
 
+    # @info 是对BEVDet基类方法的重写，实现时序特征的提取
     def extract_img_feat(self,
                          img,
                          img_metas,
                          pred_prev=False,
                          sequential=False,
                          **kwargs):
+        
+        # 如果连续提取特征，那么就直接调用extract_img_feat_sequential方法
+        # 时序相关的机制都在extract_img_feat_sequential方法中实现
         if sequential:
             return self.extract_img_feat_sequential(img, kwargs['feat_prev'])
+        
+        # 否则（非连续提取特征，与时序完全无关）
+
+        # 将输入的（一组）图像拆分为每一帧，并提取图像、传感器到关键帧的变换、关键帧到全局的变换、内参、后处理旋转、后处理平移、数据增强矩阵等参数
         imgs, sensor2keyegos, ego2globals, intrins, post_rots, post_trans, \
         bda, _ = self.prepare_inputs(img)
         """Extract features of images."""
         bev_feat_list = []
         depth_list = []
+
+        #每一组（或批次）的第一帧是关键帧，需要进行特征提取
         key_frame = True  # back propagation for key frame only
+
+        # 对于每一帧图像
         for img, sensor2keyego, ego2global, intrin, post_rot, post_tran in zip(
                 imgs, sensor2keyegos, ego2globals, intrins, post_rots, post_trans):
+            # 如果是关键帧或者需要将前一帧的BEV特征与当前帧的BEV特征对齐，那么就进行BEV特征提取
             if key_frame or self.with_prev:
+                # 如果需要在视角变换后对齐BEV特征，那么就需要将当前帧的传感器到关键帧的变换和关键帧到全局的变换作为输入
                 if self.align_after_view_transfromation:
                     sensor2keyego, ego2global = sensor2keyegos[0], ego2globals[0]
                 mlp_input = self.img_view_transformer.get_mlp_input(
                     sensor2keyegos[0], ego2globals[0], intrin, post_rot, post_tran, bda)
                 inputs_curr = (img, sensor2keyego, ego2global, intrin, post_rot,
                                post_tran, bda, mlp_input)
+                # 完成图像特征提取和视角转换，获得初级BEV特征
                 if key_frame:
                     bev_feat, depth = self.prepare_bev_feat(*inputs_curr)
                 else:
                     with torch.no_grad():
                         bev_feat, depth = self.prepare_bev_feat(*inputs_curr)
+            # 否则，就将当前帧的BEV特征设置为全0
             else:
                 bev_feat = torch.zeros_like(bev_feat_list[0])
                 depth = None
+
+            # 把每一帧图像的BEV特征和深度都添加到队列中
             bev_feat_list.append(bev_feat)
             depth_list.append(depth)
+            # 当前组的后续帧都不是关键帧，不需要特征提取
             key_frame = False
+        
+        # 如果需要预测前一帧的特征
+        # FIXME: 看起来是直接返回每一组图像的第二帧及其以后的帧的BEV特征
         if pred_prev:
             assert self.align_after_view_transfromation
             assert sensor2keyegos[0].shape[0] == 1
@@ -509,14 +569,20 @@ class BEVDet4D(BEVDet):
                                sensor2keyegos_prev, ego2globals_prev,
                                post_rots[0], post_trans[0],
                                bda_curr]
+        
+        # 如果需要对齐BEV特征
+        # 看起来是将每一组图像的第二帧及其以后的帧的BEV特征都对齐到第一帧，即关键帧
         if self.align_after_view_transfromation:
+            # 将bev_feat_list中的第1帧及其以后的帧都对齐到第0帧，即关键帧
             for adj_id in range(1, self.num_frame):
                 bev_feat_list[adj_id] = \
                     self.shift_feature(bev_feat_list[adj_id],
                                        [sensor2keyegos[0],
                                         sensor2keyegos[adj_id]],
                                        bda)
+        # 将对齐后的所有BEV特征拼接在一起
         bev_feat = torch.cat(bev_feat_list, dim=1)
+        # 进行进一步的BEV特征提取
         x = self.bev_encoder(bev_feat)
         return [x], depth_list[0]
 
