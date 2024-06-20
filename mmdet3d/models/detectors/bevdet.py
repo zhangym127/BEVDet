@@ -12,6 +12,8 @@ from mmdet.models.backbones.resnet import ResNet
 
 
 @DETECTORS.register_module()
+
+# BEVDet继承自CenterPoint，从点云开始，而且从2.1版本开始就是如此，具备提取点云特征的能力
 class BEVDet(CenterPoint):
     r"""BEVDet paradigm for multi-camera 3D object detection.
 

@@ -30,12 +30,16 @@ class DAL(BEVDet):
     def extract_img_feat(self, img, img_metas):
         """Extract features of images."""
         img = self.prepare_inputs(img)
+        # 调用图像编码器，实现在bevdet.py文件中，ResNet
         x, _  = self.image_encoder(img[0])
         return [x] + img[1:]
 
+    # 分别提取图像特征和点云特征
     def extract_feat(self, points, img, img_metas):
         """Extract features from images and points."""
+        # 提取图像特征
         img_feats = self.extract_img_feat(img, img_metas)
+        # 提取点云特征，实现在centerpoint.py中
         pts_feats = self.extract_pts_feat(points, img_feats, img_metas)
         return (img_feats, pts_feats)
 
@@ -114,12 +118,16 @@ class DAL(BEVDet):
         Returns:
             dict: Losses of different branches.
         """
+        # 从点云和多视角图像中提取特征
         img_feats, pts_feats = self.extract_feat(
             points, img=img_inputs, img_metas=img_metas)
+
+        # 将图像的2D特征转换成BEV特征
         img_feats_bev = \
             self.img_view_transformer(img_feats + img_inputs[1:7],
                                       depth_from_lidar=kwargs['gt_depth'])
 
+        # 表面上是调用centerpoint.py的forward_pts_train方法，实则调用DALHead的forward_single方法
         losses = dict()
         losses_pts = \
             self.forward_pts_train([img_feats, pts_feats, img_feats_bev],
